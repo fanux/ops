@@ -2,6 +2,7 @@
 set -o errexit
 set -o nounset
 set -o pipefail
+set -x
 
 OVN_ROOT=$(dirname "${BASH_SOURCE}")
 source ${OVN_ROOT}/lib/ovn.sh
@@ -40,20 +41,22 @@ cleanup() {
     ovs-vsctl --if-exists del-port br-int lport6
     ovs-vsctl --if-exists del-port br-int lport7
 
-    ovs-nbctl --if-exists ls-del sw0
+    ovn-nbctl --if-exists ls-del sw0
+    ip netns del lport1-ns
+    ip netns del lport2-ns
 }
 
 echo "create a logical switch which has two logical ports:"
 ls-create sw0
-ls-add-port sw0 sw0-port1 00:00:00:00:00:01
-ls-add-port sw0 sw0-port2 00:00:00:00:00:02
+ls-add-port sw0 sw0-port1 00:00:00:00:00:01 192.168.0.2/24
+ls-add-port sw0 sw0-port2 00:00:00:00:00:02 192.168.0.3/24
 
 echo "overview of the logical topology:"
 ovn-nbctl show
 
 echo "add ovs ports and associates them to OVN logical ports:"
-ovs-add-port br-int lport1 sw0-port1
-ovs-add-port br-int lport2 sw0-port2
+ovs-add-port br-int lport1 sw0-port1 192.168.0.1
+ovs-add-port br-int lport2 sw0-port2 192.168.0.1
 
 echo "show southbound ports states:"
 ovn-sbctl show
@@ -74,8 +77,8 @@ echo "Trace a broadcast packet from sw0-port1.  The packet arrives from port 1 a
 ovs-appctl ofproto/trace br-int in_port=1,dl_src=00:00:00:00:00:01,dl_dst=ff:ff:ff:ff:ff:ff -generate
 
 echo "Add another port"
-ls-add-port sw0 sw0-port3 00:00:00:00:00:02
-ovs-add-port br-int lport3 sw0-port3
+ls-add-port sw0 sw0-port3 00:00:00:00:00:02 192.168.0.4/24
+ovs-add-port br-int lport3 sw0-port3 192.168.0.1
 echo "Trace broadcast now, it should be ouput on both port 2 and 3."
 ovs-appctl ofproto/trace br-int in_port=1,dl_src=00:00:00:00:00:01,dl_dst=ff:ff:ff:ff:ff:ff -generate
 
@@ -83,4 +86,3 @@ echo "Trace a packet from sw0-port1 to an unknown mac and should be dropped"
 ovs-appctl ofproto/trace br-int in_port=1,dl_src=00:00:00:00:00:01,dl_dst=00:00:00:00:00:34 -generate
 
 echo "do cleanup"
-cleanup
